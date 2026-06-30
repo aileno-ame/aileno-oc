@@ -1,0 +1,1496 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>人物关系图 - 可视化图谱</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg-primary: #0f0f1a;
+            --bg-card: #1a1a2e;
+            --bg-card-hover: #222240;
+            --bg-input: #262640;
+            --border-color: #3a3a5c;
+            --text-primary: #e8e8f0;
+            --text-secondary: #9a9abf;
+            --accent-blue: #4f8cff;
+            --accent-purple: #7c5cfc;
+            --shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+            --radius: 12px;
+            --radius-sm: 8px;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .app-container {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        .canvas-area {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: radial-gradient(ellipse at center, #14142a 0%, #0a0a14 100%);
+            transition: background 0.4s ease;
+        }
+
+        #graph-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            cursor: grab;
+        }
+        #graph-canvas:active { cursor: grabbing; }
+
+        .canvas-watermark {
+            position: absolute;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: var(--text-secondary);
+            font-size: 13px;
+            opacity: 0.35;
+            pointer-events: none;
+            letter-spacing: 2px;
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .panel {
+            width: 380px;
+            min-width: 380px;
+            background: var(--bg-card);
+            border-left: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 20px 24px 14px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+
+        .panel-header h1 {
+            font-size: 20px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .panel-header .badge {
+            font-size: 11px;
+            color: var(--text-secondary);
+            background: var(--bg-input);
+            padding: 2px 10px;
+            border-radius: 20px;
+        }
+
+        .panel-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 24px 24px;
+        }
+
+        .panel-body::-webkit-scrollbar { width: 5px; }
+        .panel-body::-webkit-scrollbar-track { background: transparent; }
+        .panel-body::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 10px; }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 20px 0 12px;
+        }
+        .section-title:first-of-type { margin-top: 0; }
+
+        .form-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .form-row .field { flex: 1; }
+
+        .field label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .field input, .field select, .field textarea {
+            width: 100%;
+            padding: 8px 12px;
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .field input:focus, .field select:focus, .field textarea:focus {
+            border-color: var(--accent-blue);
+        }
+
+        .field input::placeholder { color: #55557a; }
+
+        .field select {
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%239a9abf' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+        }
+
+        .btn {
+            padding: 8px 18px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            color: #fff;
+        }
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(79, 140, 255, 0.3);
+        }
+
+        .btn-danger { background: #ef4444; color: #fff; }
+        .btn-danger:hover { background: #dc2626; }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+        .btn-outline:hover { background: var(--bg-card-hover); border-color: var(--text-secondary); }
+
+        .btn-success { background: var(--accent-green); color: #000; }
+        .btn-success:hover { opacity: 0.9; }
+
+        .btn-full { width: 100%; justify-content: center; display: flex; }
+        .btn-sm { padding: 5px 12px; font-size: 12px; }
+
+        /* ===== 颜色选择器 ===== */
+        .color-picker {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+            margin-top: 4px;
+        }
+
+        .color-dot {
+            width: 26px; height: 26px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.15s;
+            position: relative;
+        }
+        .color-dot:hover { transform: scale(1.18); z-index: 2; }
+        .color-dot.active { border-color: #fff; box-shadow: 0 0 0 2px var(--accent-blue); }
+
+        .color-dot .tooltip {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: #111;
+            color: #eee;
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 10;
+            border: 1px solid #333;
+        }
+        .color-dot:hover .tooltip { display: block; }
+
+        /* ===== 背景颜色选择器 ===== */
+        .bg-color-picker {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 4px;
+        }
+
+        .bg-color-dot {
+            width: 28px; height: 28px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.15s;
+            position: relative;
+        }
+        .bg-color-dot:hover { transform: scale(1.15); z-index: 2; }
+        .bg-color-dot.active { border-color: #fff; box-shadow: 0 0 0 2px var(--accent-purple); }
+
+        .bg-color-dot .tooltip {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: #111;
+            color: #eee;
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 10;
+            border: 1px solid #333;
+        }
+        .bg-color-dot:hover .tooltip { display: block; }
+
+        .bg-custom-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-top: 6px;
+        }
+
+        .bg-custom-row input[type="color"] {
+            width: 36px; height: 36px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            background: none;
+            padding: 0;
+        }
+        .bg-custom-row input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        .bg-custom-row input[type="color"]::-webkit-color-swatch { border: 1px solid var(--border-color); border-radius: 6px; }
+
+        .bg-custom-row input[type="text"] {
+            flex: 1;
+            padding: 6px 10px;
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 13px;
+            outline: none;
+            font-family: monospace;
+        }
+        .bg-custom-row input[type="text"]:focus { border-color: var(--accent-blue); }
+
+        /* ===== 人物列表 ===== */
+        .person-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .person-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px 4px 8px;
+            border-radius: 20px;
+            font-size: 13px;
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .person-tag:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+
+        .person-tag .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+        .person-tag .remove-btn {
+            font-size: 14px;
+            color: var(--text-secondary);
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0 2px;
+            line-height: 1;
+            transition: color 0.15s;
+        }
+        .person-tag .remove-btn:hover { color: #ef4444; }
+
+        .relation-list { margin-top: 8px; }
+
+        .relation-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: var(--bg-input);
+            border-radius: var(--radius-sm);
+            margin-bottom: 6px;
+            font-size: 13px;
+            border: 1px solid transparent;
+            transition: all 0.15s;
+        }
+        .relation-item:hover { border-color: var(--border-color); background: var(--bg-card-hover); }
+
+        .relation-item .rel-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .relation-item .rel-label {
+            padding: 1px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            background: rgba(79, 140, 255, 0.15);
+            color: var(--accent-blue);
+        }
+
+        .relation-item .del-rel {
+            font-size: 14px;
+            color: var(--text-secondary);
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0 4px;
+            transition: color 0.15s;
+        }
+        .relation-item .del-rel:hover { color: #ef4444; }
+
+        .empty-state { text-align: center; padding: 30px 10px; color: var(--text-secondary); }
+        .empty-state p { font-size: 13px; }
+
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            padding: 10px 24px;
+            border-radius: var(--radius);
+            font-size: 14px;
+            box-shadow: var(--shadow);
+            opacity: 0;
+            transition: all 0.35s ease;
+            pointer-events: none;
+            z-index: 999;
+        }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+        #file-input { display: none; }
+
+        /* ===== 详情弹窗 ===== */
+        .detail-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .detail-overlay.open { display: flex; }
+
+        .detail-modal {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            width: 420px;
+            max-width: 90vw;
+            max-height: 85vh;
+            overflow-y: auto;
+            padding: 24px 28px;
+            animation: modalIn 0.2s ease;
+        }
+
+        @keyframes modalIn {
+            from { opacity: 0; transform: scale(0.95) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        .detail-modal .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .detail-modal .modal-header .name-wrap {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .detail-modal .modal-header .name-wrap .color-bar {
+            width: 6px;
+            height: 28px;
+            border-radius: 3px;
+        }
+
+        .detail-modal .modal-header .name-wrap h2 {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .detail-modal .modal-header .close-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 22px;
+            cursor: pointer;
+            padding: 0 4px;
+            transition: color 0.15s;
+            line-height: 1;
+        }
+        .detail-modal .modal-header .close-btn:hover { color: #fff; }
+
+        .detail-modal .detail-field {
+            margin-bottom: 12px;
+        }
+
+        .detail-modal .detail-field label {
+            display: block;
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .detail-modal .detail-field input,
+        .detail-modal .detail-field textarea {
+            width: 100%;
+            padding: 8px 12px;
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+            font-family: inherit;
+        }
+
+        .detail-modal .detail-field input:focus,
+        .detail-modal .detail-field textarea:focus {
+            border-color: var(--accent-blue);
+        }
+
+        .detail-modal .detail-field textarea {
+            resize: vertical;
+            min-height: 80px;
+            line-height: 1.6;
+        }
+
+        .detail-modal .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        @media (max-width: 820px) {
+            .app-container { flex-direction: column; }
+            .panel { width: 100%; min-width: unset; max-height: 45vh; border-left: none; border-top: 1px solid var(--border-color); }
+            .canvas-area { height: 55vh; }
+            .detail-modal { width: 95vw; padding: 18px; }
+        }
+
+        @media (max-width: 480px) {
+            .panel-body { padding: 12px 16px; }
+            .form-row { flex-direction: column; gap: 8px; }
+            .panel-header h1 { font-size: 17px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <div class="canvas-area" id="canvas-area">
+            <canvas id="graph-canvas"></canvas>
+            <div class="canvas-watermark">✦ 拖拽节点 · 双击人物编辑详情</div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">
+                <h1>✦ 关系图谱</h1>
+                <span class="badge" id="stats-badge">0 人 · 0 关系</span>
+            </div>
+            <div class="panel-body">
+
+                <div class="section-title">👤 添加人物</div>
+                <div class="form-row">
+                    <div class="field">
+                        <input type="text" id="person-name" placeholder="姓名" maxlength="12" />
+                    </div>
+                    <div>
+                        <button class="btn btn-primary" id="add-person-btn">添加</button>
+                    </div>
+                </div>
+                <div class="field" style="margin-bottom: 6px;">
+                    <label>✦ 选择门派色（悬停查看门派名）</label>
+                    <div class="color-picker" id="color-picker"></div>
+                </div>
+
+                <div class="section-title">人物列表 <span style="font-weight:400;color:var(--text-secondary);font-size:11px;text-transform:none;">（双击标签编辑详情）</span></div>
+                <div class="person-list" id="person-list">
+                    <div class="empty-state"><p>暂无人物，请添加</p></div>
+                </div>
+
+                <div class="section-title" style="margin-top: 20px;">🔗 添加关系</div>
+                <div class="form-row">
+                    <div class="field">
+                        <select id="rel-source"><option value="">— 选择来源 —</option></select>
+                    </div>
+                    <div class="field">
+                        <select id="rel-target"><option value="">— 选择目标 —</option></select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="field" style="flex: 2;">
+                        <input type="text" id="rel-label" placeholder="关系标签，如：夫妻 / 朋友" maxlength="10" />
+                    </div>
+                    <div>
+                        <button class="btn btn-primary" id="add-rel-btn">连接</button>
+                    </div>
+                </div>
+
+                <div class="section-title">关系列表</div>
+                <div class="relation-list" id="relation-list">
+                    <div class="empty-state"><p>暂无关系</p></div>
+                </div>
+
+                <div class="section-title" style="margin-top: 20px;">🎨 画布背景</div>
+                <div class="bg-color-picker" id="bg-color-picker"></div>
+                <div class="bg-custom-row">
+                    <input type="color" id="bg-custom-color" value="#0f0f1a" />
+                    <input type="text" id="bg-custom-hex" placeholder="#0f0f1a 或渐变" maxlength="80" />
+                    <button class="btn btn-primary btn-sm" id="bg-apply-btn" style="padding:6px 12px;font-size:12px;">应用</button>
+                </div>
+
+                <div class="section-title" style="margin-top: 20px;">💾 数据管理</div>
+                <div style="display: flex; gap: 8px; margin-bottom: 6px;">
+                    <button class="btn btn-success btn-full" id="save-btn">💾 保存为文件</button>
+                    <button class="btn btn-outline btn-full" id="load-btn">📂 加载文件</button>
+                </div>
+                <input type="file" id="file-input" accept=".json" />
+
+                <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                    <button class="btn btn-primary btn-full" id="export-png-btn">🖼 导出为图片</button>
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-danger btn-full" id="clear-all-btn">🗑 清空</button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- 详情弹窗 -->
+    <div class="detail-overlay" id="detail-overlay">
+        <div class="detail-modal">
+            <div class="modal-header">
+                <div class="name-wrap">
+                    <div class="color-bar" id="detail-color-bar"></div>
+                    <h2 id="detail-title">人物详情</h2>
+                </div>
+                <button class="close-btn" id="detail-close-btn">✕</button>
+            </div>
+
+            <div class="detail-field">
+                <label>姓名</label>
+                <input type="text" id="detail-name" maxlength="12" />
+            </div>
+
+            <div class="detail-field">
+                <label>别称 / 字号</label>
+                <input type="text" id="detail-alias" placeholder="如：颦颦 / 宝二爷" maxlength="20" />
+            </div>
+
+            <div class="detail-field">
+                <label>性别</label>
+                <input type="text" id="detail-gender" placeholder="男 / 女" maxlength="6" />
+            </div>
+
+            <div class="detail-field">
+                <label>年龄 / 生卒年</label>
+                <input type="text" id="detail-age" placeholder="如：18岁 / 1715年-1763年" maxlength="20" />
+            </div>
+
+            <div class="detail-field">
+                <label>简介 / 备注</label>
+                <textarea id="detail-bio" placeholder="人物背景、性格特征、关键事迹等…" rows="4"></textarea>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-outline" id="detail-cancel-btn">取消</button>
+                <button class="btn btn-primary" id="detail-save-btn">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // ============================================================
+        //  剑网三 · 二十门派代表色
+        // ============================================================
+        const COLORS = [
+            { hex: '#f48095', name: '七秀' },
+            { hex: '#9181a8', name: '万花' },
+            { hex: '#d13538', name: '天策' },
+            { hex: '#71d2fd', name: '纯阳' },
+            { hex: '#fbe389', name: '少林' },
+            { hex: '#f7df57', name: '藏剑' },
+            { hex: '#665484', name: '五毒' },
+            { hex: '#14267a', name: '唐门' },
+            { hex: '#e1624f', name: '明教' },
+            { hex: '#bfa084', name: '丐帮' },
+            { hex: '#474747', name: '苍云' },
+            { hex: '#aae5cf', name: '长歌' },
+            { hex: '#635e86', name: '霸刀' },
+            { hex: '#81bed0', name: '蓬莱' },
+            { hex: '#be404b', name: '凌雪' },
+            { hex: '#a39bf1', name: '衍天' },
+            { hex: '#3a8179', name: '药宗' },
+            { hex: '#5f8ccf', name: '刀宗' },
+            { hex: '#d8bd76', name: '万灵' },
+            { hex: '#cbced3', name: '段氏' },
+            { hex: '#3d0b99', name: '无相' },
+            { hex: '#ffffff', name: '大侠' },
+        ];
+
+        const BG_COLORS = [
+            { css: 'radial-gradient(ellipse at center, #14142a 0%, #0a0a14 100%)', name: '深空暗夜（默认）' },
+            { css: '#0d0d0d', name: '纯黑' },
+            { css: '#1a1a2e', name: '深蓝' },
+            { css: '#2d1b3d', name: '暗紫' },
+            { css: '#1b2d1b', name: '暗绿' },
+            { css: '#2d1b1b', name: '暗红' },
+            { css: '#f5f0eb', name: '米白' },
+            { css: '#e8f4f8', name: '浅蓝' },
+            { css: '#f0e6d3', name: '暖黄' },
+            { css: '#ffffff', name: '纯白' },
+        ];
+
+        let persons = [];
+        let relations = [];
+        let nextId = 1;
+
+        // ============================================================
+        //  图谱引擎
+        // ============================================================
+        const canvas = document.getElementById('graph-canvas');
+        const ctx = canvas.getContext('2d');
+        const canvasArea = document.getElementById('canvas-area');
+
+        let nodes = [];
+        let edges = [];
+
+        let dragNode = null;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+        let viewX = 0, viewY = 0, zoom = 1;
+        let isPanning = false;
+        let panStartX, panStartY;
+
+        let settleSteps = 0;
+        const SETTLE_FRAMES = 120;
+
+        function resizeCanvas() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            render();
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        function screenToWorld(sx, sy) {
+            return { x: (sx - canvas.width / 2) / zoom - viewX, y: (sy - canvas.height / 2) / zoom - viewY };
+        }
+
+        function rebuildGraph() {
+            nodes = persons.map(p => {
+                const existing = nodes.find(n => n.id === p.id);
+                return {
+                    id: p.id,
+                    x: existing ? existing.x : (Math.random() - 0.5) * 400,
+                    y: existing ? existing.y : (Math.random() - 0.5) * 400,
+                    vx: 0, vy: 0,
+                    radius: 28,
+                    name: p.name,
+                    color: p.color,
+                    locked: true
+                };
+            });
+
+            edges = relations.map(r => {
+                const s = nodes.find(n => n.id === r.source);
+                const t = nodes.find(n => n.id === r.target);
+                return { source: s, target: t, label: r.label };
+            }).filter(e => e.source && e.target);
+
+            if (nodes.length > 0) settleSteps = SETTLE_FRAMES;
+        }
+
+        function simulateStep() {
+            if (settleSteps <= 0) return;
+            if (nodes.length === 0) { settleSteps = 0; return; }
+
+            const k = 5000;
+            for (const n of nodes) { n.fx = 0; n.fy = 0; }
+
+            for (let i = 0; i < nodes.length; i++) {
+                for (let j = i + 1; j < nodes.length; j++) {
+                    const a = nodes[i], b = nodes[j];
+                    let dx = b.x - a.x, dy = b.y - a.y;
+                    let dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 1) dist = 1;
+                    const force = k / (dist * dist);
+                    const fx = (dx / dist) * force, fy = (dy / dist) * force;
+                    a.fx -= fx; a.fy -= fy;
+                    b.fx += fx; b.fy += fy;
+                }
+            }
+
+            for (const e of edges) {
+                if (!e.source || !e.target) continue;
+                const a = e.source, b = e.target;
+                let dx = b.x - a.x, dy = b.y - a.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 1) dist = 1;
+                const targetDist = 120;
+                const force = (dist - targetDist) * 0.03;
+                const fx = (dx / dist) * force, fy = (dy / dist) * force;
+                a.fx += fx; a.fy += fy;
+                b.fx -= fx; b.fy -= fy;
+            }
+
+            const centerPull = 0.02 * (settleSteps / SETTLE_FRAMES);
+            for (const n of nodes) { n.fx -= n.x * centerPull; n.fy -= n.y * centerPull; }
+
+            const damping = 0.8;
+            for (const n of nodes) {
+                if (n.locked) { n.vx = 0; n.vy = 0; continue; }
+                n.vx = (n.vx + n.fx) * damping;
+                n.vy = (n.vy + n.fy) * damping;
+                n.x += n.vx; n.y += n.vy;
+            }
+
+            settleSteps--;
+            if (settleSteps <= 0) {
+                for (const n of nodes) { n.locked = true; n.vx = 0; n.vy = 0; }
+            }
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const cx = canvas.width / 2, cy = canvas.height / 2;
+
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.scale(zoom, zoom);
+            ctx.translate(viewX, viewY);
+
+            for (const e of edges) {
+                if (!e.source || !e.target) continue;
+                const sx = e.source.x, sy = e.source.y;
+                const tx = e.target.x, ty = e.target.y;
+                ctx.beginPath();
+                ctx.moveTo(sx, sy);
+                ctx.lineTo(tx, ty);
+                ctx.strokeStyle = 'rgba(154, 154, 191, 0.35)';
+                ctx.lineWidth = 1.5 / zoom;
+                ctx.stroke();
+
+                const mx = (sx + tx) / 2, my = (sy + ty) / 2;
+                if (e.label) {
+                    ctx.font = `${12 / zoom}px sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'bottom';
+                    const metrics = ctx.measureText(e.label);
+                    const tw = metrics.width + 12 / zoom, th = 18 / zoom;
+                    ctx.fillStyle = 'rgba(26, 26, 46, 0.85)';
+                    if (ctx.roundRect) {
+                        ctx.beginPath();
+                        ctx.roundRect(mx - tw / 2, my - th / 2 - 4 / zoom, tw, th, 4 / zoom);
+                        ctx.fill();
+                    } else {
+                        ctx.fillRect(mx - tw / 2, my - th / 2 - 4 / zoom, tw, th);
+                    }
+                    ctx.fillStyle = '#b0b0d0';
+                    ctx.fillText(e.label, mx, my + 4 / zoom);
+                }
+            }
+
+            for (const n of nodes) {
+                const r = n.radius / zoom;
+
+                const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, r * 2.5);
+                grad.addColorStop(0, n.color + '40');
+                grad.addColorStop(1, n.color + '00');
+                ctx.beginPath();
+                ctx.arc(n.x, n.y, r * 2.5, 0, Math.PI * 2);
+                ctx.fillStyle = grad;
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+                ctx.fillStyle = n.color;
+                ctx.fill();
+
+                ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                ctx.lineWidth = 2 / zoom;
+                ctx.stroke();
+
+                ctx.font = `bold ${14 / zoom}px sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = '#fff';
+                ctx.shadowColor = 'rgba(0,0,0,0.6)';
+                ctx.shadowBlur = 6 / zoom;
+                ctx.fillText(n.name, n.x, n.y);
+                ctx.shadowBlur = 0;
+            }
+
+            ctx.restore();
+            document.getElementById('stats-badge').textContent = `${persons.length} 人 · ${relations.length} 关系`;
+        }
+
+        let animId = null;
+        function startSimulation() {
+            if (animId) return;
+            function loop() { simulateStep(); render(); animId = requestAnimationFrame(loop); }
+            loop();
+        }
+
+        // ---- 交互 ----
+        function getCanvasPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: clientX - rect.left, y: clientY - rect.top };
+        }
+
+        function hitTest(wx, wy) {
+            for (let i = nodes.length - 1; i >= 0; i--) {
+                const n = nodes[i];
+                const dx = wx - n.x, dy = wy - n.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < n.radius / zoom + 10 / zoom) return n;
+            }
+            return null;
+        }
+
+        let lastClickTime = 0;
+        let lastClickNode = null;
+
+        canvas.addEventListener('mousedown', (e) => {
+            const pos = getCanvasPos(e);
+            const world = screenToWorld(pos.x, pos.y);
+            const hit = hitTest(world.x, world.y);
+
+            const now = Date.now();
+            if (hit && hit.id === lastClickNode && (now - lastClickTime < 350)) {
+                e.preventDefault();
+                openDetail(hit.id);
+                lastClickTime = 0;
+                lastClickNode = null;
+                return;
+            }
+
+            lastClickTime = now;
+            lastClickNode = hit ? hit.id : null;
+
+            if (hit) {
+                dragNode = hit;
+                dragOffsetX = world.x - hit.x;
+                dragOffsetY = world.y - hit.y;
+                canvas.style.cursor = 'grabbing';
+            } else {
+                isPanning = true;
+                panStartX = pos.x;
+                panStartY = pos.y;
+                canvas.style.cursor = 'grabbing';
+            }
+        });
+
+        function onPointerMove(e) {
+            e.preventDefault();
+            const pos = getCanvasPos(e);
+            if (dragNode) {
+                const world = screenToWorld(pos.x, pos.y);
+                dragNode.x = world.x - dragOffsetX;
+                dragNode.y = world.y - dragOffsetY;
+                render();
+                return;
+            }
+            if (isPanning) {
+                const dx = (pos.x - panStartX) / zoom, dy = (pos.y - panStartY) / zoom;
+                viewX += dx; viewY += dy;
+                panStartX = pos.x; panStartY = pos.y;
+                render();
+                return;
+            }
+            const world = screenToWorld(pos.x, pos.y);
+            const hit = hitTest(world.x, world.y);
+            canvas.style.cursor = hit ? 'pointer' : 'grab';
+        }
+
+        function onPointerUp(e) {
+            e.preventDefault();
+            if (dragNode) { dragNode.vx = 0; dragNode.vy = 0; dragNode = null; }
+            isPanning = false;
+            canvas.style.cursor = 'grab';
+        }
+
+        function onWheel(e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            const newZoom = Math.min(Math.max(zoom * delta, 0.2), 4);
+            const pos = getCanvasPos(e);
+            const world = screenToWorld(pos.x, pos.y);
+            zoom = newZoom;
+            viewX = (pos.x - canvas.width / 2) / zoom - world.x;
+            viewY = (pos.y - canvas.height / 2) / zoom - world.y;
+            render();
+        }
+
+        window.addEventListener('mousemove', onPointerMove);
+        window.addEventListener('mouseup', onPointerUp);
+        canvas.addEventListener('wheel', onWheel, { passive: false });
+
+        let touchDist = 0;
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                const pos = getCanvasPos(e);
+                const world = screenToWorld(pos.x, pos.y);
+                const hit = hitTest(world.x, world.y);
+                if (hit) {
+                    dragNode = hit;
+                    dragOffsetX = world.x - hit.x;
+                    dragOffsetY = world.y - hit.y;
+                } else {
+                    isPanning = true;
+                    panStartX = pos.x;
+                    panStartY = pos.y;
+                }
+            } else if (e.touches.length === 2) {
+                touchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            }
+        }, { passive: false });
+        canvas.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 1) {
+                const pos = getCanvasPos(e);
+                if (dragNode) {
+                    const world = screenToWorld(pos.x, pos.y);
+                    dragNode.x = world.x - dragOffsetX;
+                    dragNode.y = world.y - dragOffsetY;
+                    render();
+                } else if (isPanning) {
+                    const dx = (pos.x - panStartX) / zoom, dy = (pos.y - panStartY) / zoom;
+                    viewX += dx; viewY += dy;
+                    panStartX = pos.x; panStartY = pos.y;
+                    render();
+                }
+            } else if (e.touches.length === 2) {
+                e.preventDefault();
+                const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                const delta = dist / touchDist;
+                const newZoom = Math.min(Math.max(zoom * delta, 0.2), 4);
+                const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                const rect = canvas.getBoundingClientRect();
+                const world = screenToWorld(cx - rect.left, cy - rect.top);
+                zoom = newZoom;
+                viewX = (cx - rect.left - canvas.width / 2) / zoom - world.x;
+                viewY = (cy - rect.top - canvas.height / 2) / zoom - world.y;
+                touchDist = dist;
+                render();
+            }
+        }, { passive: false });
+        canvas.addEventListener('touchend', (e) => {
+            if (dragNode) { dragNode.vx = 0; dragNode.vy = 0; dragNode = null; }
+            isPanning = false;
+        }, { passive: false });
+
+        // ============================================================
+        //  ★ 导出为图片
+        // ============================================================
+        document.getElementById('export-png-btn').addEventListener('click', () => {
+            if (persons.length === 0) {
+                showToast('暂无数据可导出');
+                return;
+            }
+
+            // 获取画布当前背景色
+            const bgStyle = getComputedStyle(canvasArea).background;
+
+            // 创建离屏 canvas，尺寸与显示画布一致
+            const exportCanvas = document.createElement('canvas');
+            exportCanvas.width = canvas.width;
+            exportCanvas.height = canvas.height;
+            const exportCtx = exportCanvas.getContext('2d');
+
+            // 绘制背景
+            // 先尝试解析为 CSS 渐变，否则用纯色
+            const tempDiv = document.createElement('div');
+            tempDiv.style.background = bgStyle;
+            document.body.appendChild(tempDiv);
+            const computedBg = getComputedStyle(tempDiv).background;
+            document.body.removeChild(tempDiv);
+
+            // 对于渐变背景，用 canvas 绘制
+            if (bgStyle.includes('gradient')) {
+                // 提取颜色 stops
+                const grad = exportCtx.createRadialGradient(
+                    exportCanvas.width / 2, exportCanvas.height / 2, 0,
+                    exportCanvas.width / 2, exportCanvas.height / 2, Math.max(exportCanvas.width, exportCanvas.height) * 0.8
+                );
+                // 默认深空渐变
+                grad.addColorStop(0, '#14142a');
+                grad.addColorStop(1, '#0a0a14');
+                exportCtx.fillStyle = grad;
+            } else {
+                // 纯色背景
+                const colorMatch = bgStyle.match(/#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|rgb[a]?\([^)]+\)/);
+                if (colorMatch) {
+                    exportCtx.fillStyle = colorMatch[0];
+                } else {
+                    exportCtx.fillStyle = '#0f0f1a';
+                }
+            }
+            exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+
+            // 复制主 canvas 内容
+            exportCtx.drawImage(canvas, 0, 0);
+
+            // 添加水印
+            exportCtx.font = '13px sans-serif';
+            exportCtx.textAlign = 'center';
+            exportCtx.fillStyle = 'rgba(154, 154, 191, 0.25)';
+            exportCtx.fillText('✦ 关系图谱', exportCanvas.width / 2, exportCanvas.height - 12);
+
+            // 导出为 PNG
+            const link = document.createElement('a');
+            link.download = `关系图_${new Date().toISOString().slice(0,10)}.png`;
+            link.href = exportCanvas.toDataURL('image/png');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            showToast('图片已导出');
+        });
+
+        // ============================================================
+        //  详情弹窗逻辑
+        // ============================================================
+        let editingPersonId = null;
+
+        function openDetail(personId) {
+            const p = persons.find(x => x.id === personId);
+            if (!p) return;
+
+            editingPersonId = personId;
+            const detail = p.detail || {};
+
+            document.getElementById('detail-color-bar').style.background = p.color;
+            document.getElementById('detail-title').textContent = p.name;
+            document.getElementById('detail-name').value = p.name;
+            document.getElementById('detail-alias').value = detail.alias || '';
+            document.getElementById('detail-gender').value = detail.gender || '';
+            document.getElementById('detail-age').value = detail.age || '';
+            document.getElementById('detail-bio').value = detail.bio || '';
+
+            document.getElementById('detail-overlay').classList.add('open');
+        }
+
+        function closeDetail() {
+            document.getElementById('detail-overlay').classList.remove('open');
+            editingPersonId = null;
+        }
+
+        function saveDetail() {
+            if (editingPersonId === null) return;
+            const p = persons.find(x => x.id === editingPersonId);
+            if (!p) return;
+
+            const newName = document.getElementById('detail-name').value.trim();
+            if (!newName) { showToast('姓名不能为空'); return; }
+
+            if (newName !== p.name && persons.some(x => x.name === newName)) {
+                showToast('该姓名已存在');
+                return;
+            }
+
+            p.name = newName;
+            p.detail = {
+                alias: document.getElementById('detail-alias').value.trim(),
+                gender: document.getElementById('detail-gender').value.trim(),
+                age: document.getElementById('detail-age').value.trim(),
+                bio: document.getElementById('detail-bio').value.trim()
+            };
+
+            const n = nodes.find(x => x.id === p.id);
+            if (n) n.name = p.name;
+
+            closeDetail();
+            rebuildGraph();
+            refreshUI();
+            render();
+            showToast(`「${p.name}」详情已保存`);
+        }
+
+        document.getElementById('detail-close-btn').addEventListener('click', closeDetail);
+        document.getElementById('detail-cancel-btn').addEventListener('click', closeDetail);
+        document.getElementById('detail-save-btn').addEventListener('click', saveDetail);
+
+        document.getElementById('detail-overlay').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) closeDetail();
+        });
+
+        document.getElementById('detail-name').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') saveDetail();
+        });
+
+        // ============================================================
+        //  背景颜色控制
+        // ============================================================
+        function setBackground(cssValue) {
+            canvasArea.style.background = cssValue;
+            document.getElementById('bg-custom-hex').value = cssValue;
+            document.querySelectorAll('.bg-color-dot').forEach(dot => {
+                dot.classList.toggle('active', dot.dataset.css === cssValue);
+            });
+        }
+
+        function initBgPicker() {
+            const container = document.getElementById('bg-color-picker');
+            container.innerHTML = '';
+            BG_COLORS.forEach(bg => {
+                const dot = document.createElement('div');
+                dot.className = 'bg-color-dot';
+                dot.style.background = bg.css;
+                dot.dataset.css = bg.css;
+                const tip = document.createElement('span');
+                tip.className = 'tooltip';
+                tip.textContent = bg.name;
+                dot.appendChild(tip);
+                dot.addEventListener('click', () => {
+                    setBackground(bg.css);
+                    if (!bg.css.startsWith('radial') && !bg.css.startsWith('linear')) {
+                        document.getElementById('bg-custom-color').value = bg.css;
+                    }
+                    showToast(`背景已切换：${bg.name}`);
+                });
+                container.appendChild(dot);
+            });
+            const first = container.querySelector('.bg-color-dot');
+            if (first) first.classList.add('active');
+        }
+
+        document.getElementById('bg-custom-color').addEventListener('input', (e) => {
+            document.getElementById('bg-custom-hex').value = e.target.value;
+        });
+
+        document.getElementById('bg-apply-btn').addEventListener('click', () => {
+            const val = document.getElementById('bg-custom-hex').value.trim();
+            if (!val) { showToast('请输入颜色值'); return; }
+            setBackground(val);
+            if (/^#[0-9a-fA-F]{6}$/.test(val)) document.getElementById('bg-custom-color').value = val;
+            showToast('背景已更新');
+        });
+
+        document.getElementById('bg-custom-hex').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') document.getElementById('bg-apply-btn').click();
+        });
+
+        // ============================================================
+        //  保存 / 加载
+        // ============================================================
+        function getSaveData() {
+            return {
+                version: 3,
+                nextId: nextId,
+                persons: persons.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    color: p.color,
+                    detail: p.detail || {}
+                })),
+                relations: relations.map(r => ({ id: r.id, source: r.source, target: r.target, label: r.label })),
+                positions: nodes.map(n => ({ id: n.id, x: Math.round(n.x * 100) / 100, y: Math.round(n.y * 100) / 100 })),
+                background: canvasArea.style.background || 'radial-gradient(ellipse at center, #14142a 0%, #0a0a14 100%)'
+            };
+        }
+
+        function loadSaveData(data) {
+            persons = [];
+            relations = [];
+            nodes = [];
+            edges = [];
+            nextId = data.nextId || 1;
+
+            if (data.persons) {
+                data.persons.forEach(p => persons.push({ id: p.id, name: p.name, color: p.color, detail: p.detail || {} }));
+            }
+            if (data.relations) {
+                data.relations.forEach(r => relations.push({ id: r.id, source: r.source, target: r.target, label: r.label }));
+            }
+
+            rebuildGraph();
+
+            if (data.positions && nodes.length > 0) {
+                data.positions.forEach(pos => {
+                    const n = nodes.find(x => x.id === pos.id);
+                    if (n) { n.x = pos.x; n.y = pos.y; }
+                });
+                settleSteps = 0;
+                for (const n of nodes) { n.locked = true; n.vx = 0; n.vy = 0; }
+            }
+
+            if (data.background) setBackground(data.background);
+
+            refreshUI();
+            render();
+            showToast('数据已恢复');
+        }
+
+        document.getElementById('save-btn').addEventListener('click', () => {
+            if (persons.length === 0) { showToast('暂无数据可保存'); return; }
+            const data = getSaveData();
+            const json = JSON.stringify(data, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+            const filename = `关系图_${dateStr}.json`;
+            const a = document.createElement('a');
+            a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast(`已保存为 ${filename}`);
+        });
+
+        document.getElementById('load-btn').addEventListener('click', () => {
+            if (persons.length > 0 && !confirm('加载文件将覆盖当前所有数据，确定吗？')) return;
+            document.getElementById('file-input').click();
+        });
+
+        document.getElementById('file-input').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const data = JSON.parse(evt.target.result);
+                    if (!data.persons || !data.relations) { showToast('文件格式无效'); return; }
+                    loadSaveData(data);
+                } catch (err) { showToast('文件解析失败，请检查文件格式'); }
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        });
+
+        // ============================================================
+        //  UI 逻辑
+        // ============================================================
+        const toastEl = document.getElementById('toast');
+        let toastTimer = null;
+        function showToast(msg) {
+            toastEl.textContent = msg;
+            toastEl.classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2800);
+        }
+
+        const colorPicker = document.getElementById('color-picker');
+        let selectedColor = COLORS[0].hex;
+
+        function renderColorPicker() {
+            colorPicker.innerHTML = '';
+            COLORS.forEach(c => {
+                const dot = document.createElement('div');
+                dot.className = 'color-dot' + (c.hex === selectedColor ? ' active' : '');
+                dot.style.background = c.hex;
+                const tip = document.createElement('span');
+                tip.className = 'tooltip';
+                tip.textContent = c.name;
+                dot.appendChild(tip);
+                dot.addEventListener('click', () => { selectedColor = c.hex; renderColorPicker(); });
+                colorPicker.appendChild(dot);
+            });
+        }
+        renderColorPicker();
+
+        document.getElementById('add-person-btn').addEventListener('click', () => {
+            const name = document.getElementById('person-name').value.trim();
+            if (!name) { showToast('请输入人物姓名'); return; }
+            if (persons.some(p => p.name === name)) { showToast('该人物已存在'); return; }
+            persons.push({ id: nextId++, name, color: selectedColor, detail: {} });
+            document.getElementById('person-name').value = '';
+            rebuildGraph();
+            refreshUI();
+            showToast(`已添加「${name}」`);
+        });
+
+        document.getElementById('person-name').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') document.getElementById('add-person-btn').click();
+        });
+
+        function removePerson(id) {
+            const p = persons.find(x => x.id === id);
+            persons = persons.filter(x => x.id !== id);
+            relations = relations.filter(r => r.source !== id && r.target !== id);
+            rebuildGraph();
+            refreshUI();
+            showToast(`已删除「${p.name}」`);
+        }
+
+        document.getElementById('add-rel-btn').addEventListener('click', () => {
+            const srcId = parseInt(document.getElementById('rel-source').value);
+            const tgtId = parseInt(document.getElementById('rel-target').value);
+            const label = document.getElementById('rel-label').value.trim() || '关联';
+            if (!srcId || !tgtId) { showToast('请选择两个人'); return; }
+            if (srcId === tgtId) { showToast('不能与自己建立关系'); return; }
+            if (relations.some(r => (r.source === srcId && r.target === tgtId) || (r.source === tgtId && r.target === srcId))) {
+                showToast('该关系已存在'); return;
+            }
+            relations.push({ id: nextId++, source: srcId, target: tgtId, label });
+            document.getElementById('rel-label').value = '';
+            rebuildGraph();
+            refreshUI();
+            showToast('关系已添加');
+        });
+
+        function removeRelation(id) {
+            relations = relations.filter(r => r.id !== id);
+            rebuildGraph();
+            refreshUI();
+            showToast('关系已删除');
+        }
+
+        function refreshUI() {
+            const personList = document.getElementById('person-list');
+            if (persons.length === 0) {
+                personList.innerHTML = '<div class="empty-state"><p>暂无人物，请添加</p></div>';
+            } else {
+                personList.innerHTML = persons.map(p => {
+                    return `<span class="person-tag" data-id="${p.id}">
+                <span class="dot" style="background:${p.color}"></span>
+                ${p.name}
+                <button class="remove-btn" data-id="${p.id}">✕</button>
+              </span>`;
+                }).join('');
+
+                personList.querySelectorAll('.person-tag').forEach(tag => {
+                    let clickTimer = null;
+                    tag.addEventListener('click', (e) => {
+                        if (e.target.closest('.remove-btn')) return;
+                        const id = parseInt(tag.dataset.id);
+
+                        if (clickTimer) {
+                            clearTimeout(clickTimer);
+                            clickTimer = null;
+                            openDetail(id);
+                            return;
+                        }
+
+                        clickTimer = setTimeout(() => {
+                            clickTimer = null;
+                            const p = persons.find(x => x.id === id);
+                            if (p) {
+                                const n = nodes.find(x => x.id === id);
+                                if (n) { viewX = -n.x; viewY = -n.y; render(); }
+                            }
+                        }, 250);
+                    });
+                });
+
+                personList.querySelectorAll('.remove-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        removePerson(parseInt(btn.dataset.id));
+                    });
+                });
+            }
+
+            const selSrc = document.getElementById('rel-source');
+            const selTgt = document.getElementById('rel-target');
+            const curSrc = selSrc.value, curTgt = selTgt.value;
+            selSrc.innerHTML = '<option value="">— 选择来源 —</option>' + persons.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+            selTgt.innerHTML = '<option value="">— 选择目标 —</option>' + persons.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+            if (curSrc) selSrc.value = curSrc;
+            if (curTgt) selTgt.value = curTgt;
+
+            const relList = document.getElementById('relation-list');
+            if (relations.length === 0) {
+                relList.innerHTML = '<div class="empty-state"><p>暂无关系</p></div>';
+            } else {
+                relList.innerHTML = relations.map(r => {
+                    const src = persons.find(p => p.id === r.source);
+                    const tgt = persons.find(p => p.id === r.target);
+                    return `<div class="relation-item"><div class="rel-info"><span>${src ? src.name : '?'}</span><span style="color:var(--text-secondary)">→</span><span>${tgt ? tgt.name : '?'}</span><span class="rel-label">${r.label}</span></div><button class="del-rel" data-id="${r.id}">✕</button></div>`;
+                }).join('');
+                relList.querySelectorAll('.del-rel').forEach(btn => {
+                    btn.addEventListener('click', () => removeRelation(parseInt(btn.dataset.id)));
+                });
+            }
+
+            document.getElementById('stats-badge').textContent = `${persons.length} 人 · ${relations.length} 关系`;
+        }
+
+        document.getElementById('clear-all-btn').addEventListener('click', () => {
+            if (persons.length === 0 && relations.length === 0) return;
+            if (!confirm('确定要清空所有人物和关系吗？')) return;
+            persons = []; relations = [];
+            rebuildGraph(); refreshUI(); render();
+            showToast('已清空');
+        });
+
+        // ============================================================
+        //  初始化
+        // ============================================================
+        initBgPicker();
+        resizeCanvas();
+        render();
+        startSimulation();
+
+        console.log('✦ 人物关系图谱 · 支持导出图片');
+    </script>
+</body>
+</html>
