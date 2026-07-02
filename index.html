@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>人物关系图 - 可视化图谱</title>
+    <title>欢迎来到赛博大唐</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -23,7 +23,7 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            font-family: "Noto Sans SC", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
             background: var(--bg-primary);
             color: var(--text-primary);
             height: 100vh;
@@ -237,6 +237,43 @@
         }
         .color-dot:hover .tooltip { display: block; }
 
+        /* ===== 关系线颜色选择器 ===== */
+        .rel-color-picker {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+            margin-top: 4px;
+        }
+
+        .rel-color-dot {
+            width: 24px; height: 24px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.15s;
+            position: relative;
+        }
+        .rel-color-dot:hover { transform: scale(1.15); z-index: 2; }
+        .rel-color-dot.active { border-color: #fff; box-shadow: 0 0 0 2px var(--accent-blue); }
+
+        .rel-color-dot .tooltip {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: #111;
+            color: #eee;
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 10;
+            border: 1px solid #333;
+        }
+        .rel-color-dot:hover .tooltip { display: block; }
+
         /* ===== 背景颜色选择器 ===== */
         .bg-color-picker {
             display: flex;
@@ -350,7 +387,7 @@
             padding: 8px 12px;
             background: var(--bg-input);
             border-radius: var(--radius-sm);
-            margin-bottom: 6px;
+            margin-bottom: 5px;
             font-size: 13px;
             border: 1px solid transparent;
             transition: all 0.15s;
@@ -370,6 +407,12 @@
             font-size: 11px;
             background: rgba(79, 140, 255, 0.15);
             color: var(--accent-blue);
+        }
+
+        .relation-item .rel-color-indicator {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
         }
 
         .relation-item .del-rel {
@@ -406,7 +449,6 @@
 
         #file-input { display: none; }
 
-        /* ===== 详情弹窗 ===== */
         .detail-overlay {
             display: none;
             position: fixed;
@@ -520,6 +562,14 @@
             border-top: 1px solid var(--border-color);
         }
 
+        .auto-save-hint {
+            font-size: 11px;
+            color: var(--accent-green);
+            opacity: 0.7;
+            text-align: center;
+            margin-top: 8px;
+        }
+
         @media (max-width: 820px) {
             .app-container { flex-direction: column; }
             .panel { width: 100%; min-width: unset; max-height: 45vh; border-left: none; border-top: 1px solid var(--border-color); }
@@ -544,7 +594,7 @@
 
         <div class="panel">
             <div class="panel-header">
-                <h1>✦ 关系图谱</h1>
+                <h1>✦ 天宝年间，大梦一场</h1>
                 <span class="badge" id="stats-badge">0 人 · 0 关系</span>
             </div>
             <div class="panel-body">
@@ -585,6 +635,10 @@
                         <button class="btn btn-primary" id="add-rel-btn">连接</button>
                     </div>
                 </div>
+                <div style="margin-bottom:6px;">
+                    <label style="font-size:12px;color:var(--text-secondary);">关系线颜色</label>
+                    <div class="rel-color-picker" id="rel-color-picker"></div>
+                </div>
 
                 <div class="section-title">关系列表</div>
                 <div class="relation-list" id="relation-list">
@@ -614,6 +668,8 @@
                     <button class="btn btn-danger btn-full" id="clear-all-btn">🗑 清空</button>
                 </div>
 
+                <div class="auto-save-hint">✓ 数据已自动保存至浏览器</div>
+
             </div>
         </div>
     </div>
@@ -636,7 +692,7 @@
 
             <div class="detail-field">
                 <label>别称 / 字号</label>
-                <input type="text" id="detail-alias" placeholder="如：颦颦 / 宝二爷" maxlength="20" />
+                <input type="text" id="detail-alias" placeholder="如：武林天骄 / 极道魔尊" maxlength="20" />
             </div>
 
             <div class="detail-field">
@@ -665,7 +721,7 @@
 
     <script>
         // ============================================================
-        //  剑网三 · 二十门派代表色
+        //  门派代表色 紫色未免也太多了
         // ============================================================
         const COLORS = [
             { hex: '#f48095', name: '七秀' },
@@ -690,10 +746,22 @@
             { hex: '#cbced3', name: '段氏' },
             { hex: '#3d0b99', name: '无相' },
             { hex: '#ffffff', name: '大侠' },
+
+        ];
+
+        // ★ 关系线颜色
+        const REL_COLORS = [
+            { hex: '#F0F4F8', name: '江湖相逢' },
+            { hex: '#A8D5A2', name: '相见恨晚' },
+            { hex: '#6CB4EE', name: '策马同游' },
+            { hex: '#E34234', name: '肝胆相照' },
+            { hex: '#4A2C6E', name: '莫逆之交' },
+            { hex: '#fbbf24', name: '生死不离' },
+            { hex: '#9ca3af', name: '江湖不见' },
         ];
 
         const BG_COLORS = [
-            { css: 'radial-gradient(ellipse at center, #14142a 0%, #0a0a14 100%)', name: '深空暗夜（默认）' },
+            { css: 'radial-gradient(ellipse at center, #14142a 0%, #0a0a14 100%)', name: '默认' },
             { css: '#0d0d0d', name: '纯黑' },
             { css: '#1a1a2e', name: '深蓝' },
             { css: '#2d1b3d', name: '暗紫' },
@@ -704,6 +772,8 @@
             { css: '#f0e6d3', name: '暖黄' },
             { css: '#ffffff', name: '纯白' },
         ];
+
+        const STORAGE_KEY = 'relation_graph_data';
 
         let persons = [];
         let relations = [];
@@ -749,7 +819,7 @@
                     x: existing ? existing.x : (Math.random() - 0.5) * 400,
                     y: existing ? existing.y : (Math.random() - 0.5) * 400,
                     vx: 0, vy: 0,
-                    radius: 28,
+                    radius: 26,
                     name: p.name,
                     color: p.color,
                     locked: true
@@ -759,7 +829,7 @@
             edges = relations.map(r => {
                 const s = nodes.find(n => n.id === r.source);
                 const t = nodes.find(n => n.id === r.target);
-                return { source: s, target: t, label: r.label };
+                return { source: s, target: t, label: r.label, color: r.color || 'rgba(154, 154, 191, 0.35)' };
             }).filter(e => e.source && e.target);
 
             if (nodes.length > 0) settleSteps = SETTLE_FRAMES;
@@ -815,6 +885,17 @@
             }
         }
 
+        // ★ 自动文字反色
+        function getContrastColor(hex) {
+            const c = hex.replace('#', '');
+            const r = parseInt(c.substring(0, 2), 16);
+            const g = parseInt(c.substring(2, 4), 16);
+            const b = parseInt(c.substring(4, 6), 16);
+            const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+            return brightness > 160 ? '#1a1a2e' : '#ffffff';
+        }
+
+        // ★ 渲染
         function render() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             const cx = canvas.width / 2, cy = canvas.height / 2;
@@ -824,20 +905,22 @@
             ctx.scale(zoom, zoom);
             ctx.translate(viewX, viewY);
 
+            // ---- 绘制关系线 ----
             for (const e of edges) {
                 if (!e.source || !e.target) continue;
                 const sx = e.source.x, sy = e.source.y;
                 const tx = e.target.x, ty = e.target.y;
+
                 ctx.beginPath();
                 ctx.moveTo(sx, sy);
                 ctx.lineTo(tx, ty);
-                ctx.strokeStyle = 'rgba(154, 154, 191, 0.35)';
-                ctx.lineWidth = 1.5 / zoom;
+                ctx.strokeStyle = e.color;
+                ctx.lineWidth = 2 / zoom;
                 ctx.stroke();
 
                 const mx = (sx + tx) / 2, my = (sy + ty) / 2;
                 if (e.label) {
-                    ctx.font = `${12 / zoom}px sans-serif`;
+                    ctx.font = `${11 / zoom}px sans-serif`;
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'bottom';
                     const metrics = ctx.measureText(e.label);
@@ -855,6 +938,7 @@
                 }
             }
 
+            // ---- 绘制节点 ----
             for (const n of nodes) {
                 const r = n.radius / zoom;
 
@@ -875,14 +959,46 @@
                 ctx.lineWidth = 2 / zoom;
                 ctx.stroke();
 
-                ctx.font = `bold ${14 / zoom}px sans-serif`;
+                // 文字
+                const textColor = getContrastColor(n.color);
+                const isDark = textColor === '#ffffff';
+                const fontSize = 13 / zoom;
+                ctx.font = `600 ${fontSize}px "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif`;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillStyle = '#fff';
-                ctx.shadowColor = 'rgba(0,0,0,0.6)';
-                ctx.shadowBlur = 6 / zoom;
-                ctx.fillText(n.name, n.x, n.y);
+                ctx.lineJoin = 'round';
+
+                if (isDark) {
+                    ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+                    ctx.shadowBlur = 7 / zoom;
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(n.name, n.x, n.y);
+                    ctx.shadowBlur = 0;
+                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+                    ctx.lineWidth = 1.0 / zoom;
+                    ctx.strokeText(n.name, n.x, n.y);
+                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+                    ctx.lineWidth = 0.5 / zoom;
+                    ctx.strokeText(n.name, n.x, n.y);
+                    ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+                    ctx.shadowBlur = 2 / zoom;
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(n.name, n.x, n.y);
+                } else {
+                    ctx.shadowColor = 'rgba(255, 255, 255, 0.7)';
+                    ctx.shadowBlur = 6 / zoom;
+                    ctx.fillStyle = textColor;
+                    ctx.fillText(n.name, n.x, n.y);
+                    ctx.shadowBlur = 0;
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                    ctx.lineWidth = 0.5 / zoom;
+                    ctx.strokeText(n.name, n.x, n.y);
+                    ctx.fillStyle = textColor;
+                    ctx.fillText(n.name, n.x, n.y);
+                }
+
                 ctx.shadowBlur = 0;
+                ctx.shadowColor = 'transparent';
             }
 
             ctx.restore();
@@ -909,7 +1025,7 @@
                 const n = nodes[i];
                 const dx = wx - n.x, dy = wy - n.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist < n.radius / zoom + 10 / zoom) return n;
+                if (dist < n.radius / zoom + 12 / zoom) return n;
             }
             return null;
         }
@@ -1047,70 +1163,91 @@
         }, { passive: false });
 
         // ============================================================
-        //  ★ 导出为图片
+        //  在线自动保存
+        // ============================================================
+        function saveToLocalStorage() {
+            try {
+                const data = {
+                    version: 3,
+                    nextId: nextId,
+                    persons: persons.map(p => ({ id: p.id, name: p.name, color: p.color, detail: p.detail || {} })),
+                    relations: relations.map(r => ({ id: r.id, source: r.source, target: r.target, label: r.label, color: r.color })),
+                    positions: nodes.map(n => ({ id: n.id, x: Math.round(n.x * 100) / 100, y: Math.round(n.y * 100) / 100 })),
+                    background: canvasArea.style.background || 'radial-gradient(ellipse at center, #14142a 0%, #0a0a14 100%)'
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+            } catch (e) {}
+        }
+
+        function loadFromLocalStorage() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (!raw) return false;
+                const data = JSON.parse(raw);
+                if (!data.persons || !data.relations) return false;
+
+                persons = [];
+                relations = [];
+                nodes = [];
+                edges = [];
+                nextId = data.nextId || 1;
+
+                if (data.persons) {
+                    data.persons.forEach(p => persons.push({ id: p.id, name: p.name, color: p.color, detail: p.detail || {} }));
+                }
+                if (data.relations) {
+                    data.relations.forEach(r => relations.push({ id: r.id, source: r.source, target: r.target, label: r.label, color: r.color }));
+                }
+
+                rebuildGraph();
+
+                if (data.positions && nodes.length > 0) {
+                    data.positions.forEach(pos => {
+                        const n = nodes.find(x => x.id === pos.id);
+                        if (n) { n.x = pos.x; n.y = pos.y; }
+                    });
+                    settleSteps = 0;
+                    for (const n of nodes) { n.locked = true; n.vx = 0; n.vy = 0; }
+                }
+
+                if (data.background) setBackground(data.background);
+
+                refreshUI();
+                render();
+                return true;
+            } catch (e) { return false; }
+        }
+
+        function autoSave() { setTimeout(saveToLocalStorage, 500); }
+
+        // ============================================================
+        //  导出为图片
         // ============================================================
         document.getElementById('export-png-btn').addEventListener('click', () => {
-            if (persons.length === 0) {
-                showToast('暂无数据可导出');
-                return;
-            }
-
-            // 获取画布当前背景色
-            const bgStyle = getComputedStyle(canvasArea).background;
-
-            // 创建离屏 canvas，尺寸与显示画布一致
+            if (persons.length === 0) { showToast('暂无数据可导出'); return; }
             const exportCanvas = document.createElement('canvas');
             exportCanvas.width = canvas.width;
             exportCanvas.height = canvas.height;
             const exportCtx = exportCanvas.getContext('2d');
-
-            // 绘制背景
-            // 先尝试解析为 CSS 渐变，否则用纯色
-            const tempDiv = document.createElement('div');
-            tempDiv.style.background = bgStyle;
-            document.body.appendChild(tempDiv);
-            const computedBg = getComputedStyle(tempDiv).background;
-            document.body.removeChild(tempDiv);
-
-            // 对于渐变背景，用 canvas 绘制
+            const bgStyle = getComputedStyle(canvasArea).background;
             if (bgStyle.includes('gradient')) {
-                // 提取颜色 stops
-                const grad = exportCtx.createRadialGradient(
-                    exportCanvas.width / 2, exportCanvas.height / 2, 0,
-                    exportCanvas.width / 2, exportCanvas.height / 2, Math.max(exportCanvas.width, exportCanvas.height) * 0.8
-                );
-                // 默认深空渐变
-                grad.addColorStop(0, '#14142a');
-                grad.addColorStop(1, '#0a0a14');
+                const grad = exportCtx.createRadialGradient(exportCanvas.width/2, exportCanvas.height/2, 0, exportCanvas.width/2, exportCanvas.height/2, Math.max(exportCanvas.width, exportCanvas.height)*0.8);
+                grad.addColorStop(0, '#14142a'); grad.addColorStop(1, '#0a0a14');
                 exportCtx.fillStyle = grad;
             } else {
-                // 纯色背景
-                const colorMatch = bgStyle.match(/#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|rgb[a]?\([^)]+\)/);
-                if (colorMatch) {
-                    exportCtx.fillStyle = colorMatch[0];
-                } else {
-                    exportCtx.fillStyle = '#0f0f1a';
-                }
+                const m = bgStyle.match(/#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|rgb[a]?\([^)]+\)/);
+                exportCtx.fillStyle = m ? m[0] : '#0f0f1a';
             }
             exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
-
-            // 复制主 canvas 内容
             exportCtx.drawImage(canvas, 0, 0);
-
-            // 添加水印
             exportCtx.font = '13px sans-serif';
             exportCtx.textAlign = 'center';
             exportCtx.fillStyle = 'rgba(154, 154, 191, 0.25)';
-            exportCtx.fillText('✦ 关系图谱', exportCanvas.width / 2, exportCanvas.height - 12);
-
-            // 导出为 PNG
+            exportCtx.fillText('✦ 关系图谱', exportCanvas.width/2, exportCanvas.height-12);
             const link = document.createElement('a');
             link.download = `关系图_${new Date().toISOString().slice(0,10)}.png`;
             link.href = exportCanvas.toDataURL('image/png');
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
             showToast('图片已导出');
         });
 
@@ -1122,10 +1259,8 @@
         function openDetail(personId) {
             const p = persons.find(x => x.id === personId);
             if (!p) return;
-
             editingPersonId = personId;
             const detail = p.detail || {};
-
             document.getElementById('detail-color-bar').style.background = p.color;
             document.getElementById('detail-title').textContent = p.name;
             document.getElementById('detail-name').value = p.name;
@@ -1133,7 +1268,6 @@
             document.getElementById('detail-gender').value = detail.gender || '';
             document.getElementById('detail-age').value = detail.age || '';
             document.getElementById('detail-bio').value = detail.bio || '';
-
             document.getElementById('detail-overlay').classList.add('open');
         }
 
@@ -1146,44 +1280,23 @@
             if (editingPersonId === null) return;
             const p = persons.find(x => x.id === editingPersonId);
             if (!p) return;
-
             const newName = document.getElementById('detail-name').value.trim();
             if (!newName) { showToast('姓名不能为空'); return; }
-
-            if (newName !== p.name && persons.some(x => x.name === newName)) {
-                showToast('该姓名已存在');
-                return;
-            }
-
+            if (newName !== p.name && persons.some(x => x.name === newName)) { showToast('该姓名已存在'); return; }
             p.name = newName;
-            p.detail = {
-                alias: document.getElementById('detail-alias').value.trim(),
-                gender: document.getElementById('detail-gender').value.trim(),
-                age: document.getElementById('detail-age').value.trim(),
-                bio: document.getElementById('detail-bio').value.trim()
-            };
-
+            p.detail = { alias: document.getElementById('detail-alias').value.trim(), gender: document.getElementById('detail-gender').value.trim(), age: document.getElementById('detail-age').value.trim(), bio: document.getElementById('detail-bio').value.trim() };
             const n = nodes.find(x => x.id === p.id);
             if (n) n.name = p.name;
-
             closeDetail();
-            rebuildGraph();
-            refreshUI();
-            render();
+            rebuildGraph(); refreshUI(); render(); autoSave();
             showToast(`「${p.name}」详情已保存`);
         }
 
         document.getElementById('detail-close-btn').addEventListener('click', closeDetail);
         document.getElementById('detail-cancel-btn').addEventListener('click', closeDetail);
         document.getElementById('detail-save-btn').addEventListener('click', saveDetail);
-
-        document.getElementById('detail-overlay').addEventListener('click', (e) => {
-            if (e.target === e.currentTarget) closeDetail();
-        });
-
-        document.getElementById('detail-name').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') saveDetail();
-        });
+        document.getElementById('detail-overlay').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeDetail(); });
+        document.getElementById('detail-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveDetail(); });
 
         // ============================================================
         //  背景颜色控制
@@ -1191,9 +1304,7 @@
         function setBackground(cssValue) {
             canvasArea.style.background = cssValue;
             document.getElementById('bg-custom-hex').value = cssValue;
-            document.querySelectorAll('.bg-color-dot').forEach(dot => {
-                dot.classList.toggle('active', dot.dataset.css === cssValue);
-            });
+            document.querySelectorAll('.bg-color-dot').forEach(dot => { dot.classList.toggle('active', dot.dataset.css === cssValue); });
         }
 
         function initBgPicker() {
@@ -1201,90 +1312,52 @@
             container.innerHTML = '';
             BG_COLORS.forEach(bg => {
                 const dot = document.createElement('div');
-                dot.className = 'bg-color-dot';
-                dot.style.background = bg.css;
-                dot.dataset.css = bg.css;
-                const tip = document.createElement('span');
-                tip.className = 'tooltip';
-                tip.textContent = bg.name;
-                dot.appendChild(tip);
-                dot.addEventListener('click', () => {
-                    setBackground(bg.css);
-                    if (!bg.css.startsWith('radial') && !bg.css.startsWith('linear')) {
-                        document.getElementById('bg-custom-color').value = bg.css;
-                    }
-                    showToast(`背景已切换：${bg.name}`);
-                });
+                dot.className = 'bg-color-dot'; dot.style.background = bg.css; dot.dataset.css = bg.css;
+                const tip = document.createElement('span'); tip.className = 'tooltip'; tip.textContent = bg.name; dot.appendChild(tip);
+                dot.addEventListener('click', () => { setBackground(bg.css); if (!bg.css.startsWith('radial') && !bg.css.startsWith('linear')) document.getElementById('bg-custom-color').value = bg.css; autoSave(); });
                 container.appendChild(dot);
             });
             const first = container.querySelector('.bg-color-dot');
             if (first) first.classList.add('active');
         }
 
-        document.getElementById('bg-custom-color').addEventListener('input', (e) => {
-            document.getElementById('bg-custom-hex').value = e.target.value;
-        });
-
+        document.getElementById('bg-custom-color').addEventListener('input', (e) => { document.getElementById('bg-custom-hex').value = e.target.value; });
         document.getElementById('bg-apply-btn').addEventListener('click', () => {
             const val = document.getElementById('bg-custom-hex').value.trim();
             if (!val) { showToast('请输入颜色值'); return; }
             setBackground(val);
             if (/^#[0-9a-fA-F]{6}$/.test(val)) document.getElementById('bg-custom-color').value = val;
-            showToast('背景已更新');
+            autoSave();
         });
-
-        document.getElementById('bg-custom-hex').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') document.getElementById('bg-apply-btn').click();
-        });
+        document.getElementById('bg-custom-hex').addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('bg-apply-btn').click(); });
 
         // ============================================================
-        //  保存 / 加载
+        //  保存 / 加载（文件）
         // ============================================================
         function getSaveData() {
             return {
                 version: 3,
                 nextId: nextId,
-                persons: persons.map(p => ({
-                    id: p.id,
-                    name: p.name,
-                    color: p.color,
-                    detail: p.detail || {}
-                })),
-                relations: relations.map(r => ({ id: r.id, source: r.source, target: r.target, label: r.label })),
-                positions: nodes.map(n => ({ id: n.id, x: Math.round(n.x * 100) / 100, y: Math.round(n.y * 100) / 100 })),
+                persons: persons.map(p => ({ id: p.id, name: p.name, color: p.color, detail: p.detail || {} })),
+                relations: relations.map(r => ({ id: r.id, source: r.source, target: r.target, label: r.label, color: r.color })),
+                positions: nodes.map(n => ({ id: n.id, x: Math.round(n.x*100)/100, y: Math.round(n.y*100)/100 })),
                 background: canvasArea.style.background || 'radial-gradient(ellipse at center, #14142a 0%, #0a0a14 100%)'
             };
         }
 
         function loadSaveData(data) {
-            persons = [];
-            relations = [];
-            nodes = [];
-            edges = [];
+            persons = []; relations = []; nodes = []; edges = [];
             nextId = data.nextId || 1;
-
-            if (data.persons) {
-                data.persons.forEach(p => persons.push({ id: p.id, name: p.name, color: p.color, detail: p.detail || {} }));
-            }
-            if (data.relations) {
-                data.relations.forEach(r => relations.push({ id: r.id, source: r.source, target: r.target, label: r.label }));
-            }
-
+            if (data.persons) data.persons.forEach(p => persons.push({ id: p.id, name: p.name, color: p.color, detail: p.detail || {} }));
+            if (data.relations) data.relations.forEach(r => relations.push({ id: r.id, source: r.source, target: r.target, label: r.label, color: r.color }));
             rebuildGraph();
-
             if (data.positions && nodes.length > 0) {
-                data.positions.forEach(pos => {
-                    const n = nodes.find(x => x.id === pos.id);
-                    if (n) { n.x = pos.x; n.y = pos.y; }
-                });
+                data.positions.forEach(pos => { const n = nodes.find(x => x.id === pos.id); if (n) { n.x = pos.x; n.y = pos.y; } });
                 settleSteps = 0;
                 for (const n of nodes) { n.locked = true; n.vx = 0; n.vy = 0; }
             }
-
             if (data.background) setBackground(data.background);
-
-            refreshUI();
-            render();
+            refreshUI(); render(); autoSave();
             showToast('数据已恢复');
         }
 
@@ -1300,8 +1373,7 @@
             const filename = `关系图_${dateStr}.json`;
             const a = document.createElement('a');
             a.href = url; a.download = filename;
-            document.body.appendChild(a); a.click();
-            document.body.removeChild(a);
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
             URL.revokeObjectURL(url);
             showToast(`已保存为 ${filename}`);
         });
@@ -1320,7 +1392,7 @@
                     const data = JSON.parse(evt.target.result);
                     if (!data.persons || !data.relations) { showToast('文件格式无效'); return; }
                     loadSaveData(data);
-                } catch (err) { showToast('文件解析失败，请检查文件格式'); }
+                } catch (err) { showToast('文件解析失败'); }
             };
             reader.readAsText(file);
             e.target.value = '';
@@ -1338,33 +1410,46 @@
             toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2800);
         }
 
+        // ---- 门派色选择器 ----
         const colorPicker = document.getElementById('color-picker');
         let selectedColor = COLORS[0].hex;
-
         function renderColorPicker() {
             colorPicker.innerHTML = '';
             COLORS.forEach(c => {
                 const dot = document.createElement('div');
                 dot.className = 'color-dot' + (c.hex === selectedColor ? ' active' : '');
                 dot.style.background = c.hex;
-                const tip = document.createElement('span');
-                tip.className = 'tooltip';
-                tip.textContent = c.name;
-                dot.appendChild(tip);
+                const tip = document.createElement('span'); tip.className = 'tooltip'; tip.textContent = c.name; dot.appendChild(tip);
                 dot.addEventListener('click', () => { selectedColor = c.hex; renderColorPicker(); });
                 colorPicker.appendChild(dot);
             });
         }
         renderColorPicker();
 
+        // ---- 关系线颜色选择器 ----
+        const relColorPicker = document.getElementById('rel-color-picker');
+        let selectedRelColor = REL_COLORS[0].hex;
+        function renderRelColorPicker() {
+            relColorPicker.innerHTML = '';
+            REL_COLORS.forEach(c => {
+                const dot = document.createElement('div');
+                dot.className = 'rel-color-dot' + (c.hex === selectedRelColor ? ' active' : '');
+                dot.style.background = c.hex;
+                const tip = document.createElement('span'); tip.className = 'tooltip'; tip.textContent = c.name; dot.appendChild(tip);
+                dot.addEventListener('click', () => { selectedRelColor = c.hex; renderRelColorPicker(); });
+                relColorPicker.appendChild(dot);
+            });
+        }
+        renderRelColorPicker();
+
+        // ---- 添加人物 ----
         document.getElementById('add-person-btn').addEventListener('click', () => {
             const name = document.getElementById('person-name').value.trim();
             if (!name) { showToast('请输入人物姓名'); return; }
             if (persons.some(p => p.name === name)) { showToast('该人物已存在'); return; }
             persons.push({ id: nextId++, name, color: selectedColor, detail: {} });
             document.getElementById('person-name').value = '';
-            rebuildGraph();
-            refreshUI();
+            rebuildGraph(); refreshUI(); autoSave();
             showToast(`已添加「${name}」`);
         });
 
@@ -1376,11 +1461,11 @@
             const p = persons.find(x => x.id === id);
             persons = persons.filter(x => x.id !== id);
             relations = relations.filter(r => r.source !== id && r.target !== id);
-            rebuildGraph();
-            refreshUI();
+            rebuildGraph(); refreshUI(); autoSave();
             showToast(`已删除「${p.name}」`);
         }
 
+        // ---- 添加关系 ----
         document.getElementById('add-rel-btn').addEventListener('click', () => {
             const srcId = parseInt(document.getElementById('rel-source').value);
             const tgtId = parseInt(document.getElementById('rel-target').value);
@@ -1390,62 +1475,44 @@
             if (relations.some(r => (r.source === srcId && r.target === tgtId) || (r.source === tgtId && r.target === srcId))) {
                 showToast('该关系已存在'); return;
             }
-            relations.push({ id: nextId++, source: srcId, target: tgtId, label });
+            relations.push({ id: nextId++, source: srcId, target: tgtId, label, color: selectedRelColor });
             document.getElementById('rel-label').value = '';
-            rebuildGraph();
-            refreshUI();
+            rebuildGraph(); refreshUI(); autoSave();
             showToast('关系已添加');
         });
 
         function removeRelation(id) {
             relations = relations.filter(r => r.id !== id);
-            rebuildGraph();
-            refreshUI();
+            rebuildGraph(); refreshUI(); autoSave();
             showToast('关系已删除');
         }
 
+        // ---- 刷新 UI ----
         function refreshUI() {
             const personList = document.getElementById('person-list');
             if (persons.length === 0) {
                 personList.innerHTML = '<div class="empty-state"><p>暂无人物，请添加</p></div>';
             } else {
-                personList.innerHTML = persons.map(p => {
-                    return `<span class="person-tag" data-id="${p.id}">
-                <span class="dot" style="background:${p.color}"></span>
-                ${p.name}
-                <button class="remove-btn" data-id="${p.id}">✕</button>
-              </span>`;
-                }).join('');
+                personList.innerHTML = persons.map(p =>
+                    `<span class="person-tag" data-id="${p.id}"><span class="dot" style="background:${p.color}"></span>${p.name}<button class="remove-btn" data-id="${p.id}">✕</button></span>`
+                ).join('');
 
                 personList.querySelectorAll('.person-tag').forEach(tag => {
                     let clickTimer = null;
                     tag.addEventListener('click', (e) => {
                         if (e.target.closest('.remove-btn')) return;
                         const id = parseInt(tag.dataset.id);
-
-                        if (clickTimer) {
-                            clearTimeout(clickTimer);
-                            clickTimer = null;
-                            openDetail(id);
-                            return;
-                        }
-
+                        if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; openDetail(id); return; }
                         clickTimer = setTimeout(() => {
                             clickTimer = null;
                             const p = persons.find(x => x.id === id);
-                            if (p) {
-                                const n = nodes.find(x => x.id === id);
-                                if (n) { viewX = -n.x; viewY = -n.y; render(); }
-                            }
+                            if (p) { const n = nodes.find(x => x.id === id); if (n) { viewX = -n.x; viewY = -n.y; render(); } }
                         }, 250);
                     });
                 });
 
                 personList.querySelectorAll('.remove-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        removePerson(parseInt(btn.dataset.id));
-                    });
+                    btn.addEventListener('click', (e) => { e.stopPropagation(); removePerson(parseInt(btn.dataset.id)); });
                 });
             }
 
@@ -1464,7 +1531,17 @@
                 relList.innerHTML = relations.map(r => {
                     const src = persons.find(p => p.id === r.source);
                     const tgt = persons.find(p => p.id === r.target);
-                    return `<div class="relation-item"><div class="rel-info"><span>${src ? src.name : '?'}</span><span style="color:var(--text-secondary)">→</span><span>${tgt ? tgt.name : '?'}</span><span class="rel-label">${r.label}</span></div><button class="del-rel" data-id="${r.id}">✕</button></div>`;
+                    const color = r.color || '#9a9abf';
+                    return `<div class="relation-item">
+                        <div class="rel-info">
+                            <span class="rel-color-indicator" style="background:${color}"></span>
+                            <span>${src ? src.name : '?'}</span>
+                            <span style="color:var(--text-secondary)">→</span>
+                            <span>${tgt ? tgt.name : '?'}</span>
+                            <span class="rel-label">${r.label}</span>
+                        </div>
+                        <button class="del-rel" data-id="${r.id}">✕</button>
+                    </div>`;
                 }).join('');
                 relList.querySelectorAll('.del-rel').forEach(btn => {
                     btn.addEventListener('click', () => removeRelation(parseInt(btn.dataset.id)));
@@ -1476,9 +1553,9 @@
 
         document.getElementById('clear-all-btn').addEventListener('click', () => {
             if (persons.length === 0 && relations.length === 0) return;
-            if (!confirm('确定要清空所有人物和关系吗？')) return;
+            if (!confirm('确定要清空所有数据吗？')) return;
             persons = []; relations = [];
-            rebuildGraph(); refreshUI(); render();
+            rebuildGraph(); refreshUI(); render(); autoSave();
             showToast('已清空');
         });
 
@@ -1487,10 +1564,18 @@
         // ============================================================
         initBgPicker();
         resizeCanvas();
-        render();
+
+        const hasLocalData = loadFromLocalStorage();
+        if (!hasLocalData) {
+            render();
+        }
+
         startSimulation();
 
-        console.log('✦ 人物关系图谱 · 支持导出图片');
+        setInterval(autoSave, 30000);
+        window.addEventListener('beforeunload', saveToLocalStorage);
+
+        console.log('✦ 人物关系图谱 · 关系线颜色区分');
     </script>
 </body>
 </html>
