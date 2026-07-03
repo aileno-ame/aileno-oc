@@ -1224,32 +1224,171 @@
         //  导出为图片
         // ============================================================
         document.getElementById('export-png-btn').addEventListener('click', () => {
-            if (persons.length === 0) { showToast('暂无数据可导出'); return; }
-            const exportCanvas = document.createElement('canvas');
-            exportCanvas.width = canvas.width;
-            exportCanvas.height = canvas.height;
-            const exportCtx = exportCanvas.getContext('2d');
-            const bgStyle = getComputedStyle(canvasArea).background;
-            if (bgStyle.includes('gradient')) {
-                const grad = exportCtx.createRadialGradient(exportCanvas.width/2, exportCanvas.height/2, 0, exportCanvas.width/2, exportCanvas.height/2, Math.max(exportCanvas.width, exportCanvas.height)*0.8);
-                grad.addColorStop(0, '#14142a'); grad.addColorStop(1, '#0a0a14');
-                exportCtx.fillStyle = grad;
-            } else {
-                const m = bgStyle.match(/#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|rgb[a]?\([^)]+\)/);
-                exportCtx.fillStyle = m ? m[0] : '#0f0f1a';
-            }
-            exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
-            exportCtx.drawImage(canvas, 0, 0);
-            exportCtx.font = '13px sans-serif';
-            exportCtx.textAlign = 'center';
-            exportCtx.fillStyle = 'rgba(154, 154, 191, 0.25)';
-            exportCtx.fillText('✦ 关系图谱', exportCanvas.width/2, exportCanvas.height-12);
-            const link = document.createElement('a');
-            link.download = `关系图_${new Date().toISOString().slice(0,10)}.png`;
-            link.href = exportCanvas.toDataURL('image/png');
-            document.body.appendChild(link); link.click(); document.body.removeChild(link);
-            showToast('图片已导出');
-        });
+    if (persons.length === 0) { showToast('暂无数据可导出'); return; }
+
+    // 1. 计算所有节点在屏幕上的位置（应用 viewX/viewY/zoom 变换）
+    //    屏幕坐标 = (世界坐标 + viewX) * zoom + canvas中心
+    //    但我们不需要绝对屏幕坐标，只需要相对偏移，所以省略加 canvas 中心
+    let minSx = Infinity, minSy = Infinity, maxSx = -Infinity, maxSy = -Infinity;
+    for (const n of nodes) {
+        const sx = (n.x + viewX) * zoom;
+        const sy = (n.y + viewY) * zoom;
+        if (sx < minSx) minSx = sx;
+        if (sy < minSy) minSy = sy;
+        if (sx > maxSx) maxSx = sx;
+        if (sy > maxSy) maxSy = sy;
+    }
+
+    // 2. 加内边距（在屏幕坐标空间下）
+    const padding = 80;
+    minSx -= padding;
+    minSy -= padding;
+    maxSx += padding;
+    maxSy += padding;
+
+    const graphW = maxSx - minSx;
+    const graphH = maxSy - minSy;
+
+    // 3. 创建导出 canvas（2x dpr 保证清晰）
+    const dpr = 2;
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = graphW * dpr;
+    exportCanvas.height = graphH * dpr;
+    const ectx = exportCanvas.getContext('2d');
+
+    // 4. 画背景
+    const bgStyle = getComputedStyle(canvasArea).background;
+    if (bgStyle.includes('gradient')) {
+        const g = ectx.createRadialGradient(
+            exportCanvas.width / 2, exportCanvas.height / 2, 0,
+            exportCanvas.width / 2, exportCanvas.height / 2, Math.max(exportCanvas.width, exportCanvas.height) * 0.8
+        );
+        g.addColorStop(0, '#14142a');
+        g.addColorStop(1, '#0a0a14');
+        ectx.fillStyle = g;
+    } else {
+        const m = bgStyle.match(/#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|rgb[a]?\([^)]+\)/);
+        ectx.fillStyle = m ? m[0] : '#0f0f1a';
+    }
+    ectx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+
+    // 5. 坐标变换：先平移到让 (minSx, minSy) 对齐到 (0,0)，再应用 dpr 缩放
+    ectx.save();
+    ectx.translate(-minSx * dpr, -minSy * dpr);
+    ectx.scale(dpr, dpr);
+
+    // 6. 绘制关系线（注意：这里的坐标要应用 zoom 和 viewX/viewY）
+    for (const e of edges) {
+        if (!e.source || !e.target) continue;
+        const sx = (e.source.x + viewX) * zoom;
+        const sy = (e.source.y + viewY) * zoom;
+        const tx = (e.target.x + viewX) * zoom;
+        const ty = (e.target.y + viewY) * zoom;
+
+        ectx.beginPath();
+        ectx.moveTo(sx, sy);
+        ectx.lineTo(tx, ty);
+        ectx.strokeStyle = e.color;
+        ectx.lineWidth = 2;
+        ectx.stroke();
+
+        const mx = (sx + tx) / 2;
+        const my = (sy + ty) / 2;
+        if (e.label) {
+            ectx.font = '11px sans-serif';
+            ectx.textAlign = 'center';
+            ectx.textBaseline = 'bottom';
+            const m = ectx.measureText(e.label);
+            const tw = m.width + 12, th = 18;
+            ectx.fillStyle = 'rgba(26,26,46,0.85)';
+            ectx.fillRect(mx - tw / 2, my - th / 2 - 4, tw, th);
+            ectx.fillStyle = '#b0b0d0';
+            ectx.fillText(e.label, mx, my + 4);
+        }
+    }
+
+    // 7. 绘制节点
+    for (const n of nodes) {
+        const cx = (n.x + viewX) * zoom;
+        const cy = (n.y + viewY) * zoom;
+        const r = n.radius;  // 半径保持不变（与 render 中一致）
+
+        // 光晕
+        const g = ectx.createRadialGradient(cx, cy, 0, cx, cy, r * 2.5);
+        g.addColorStop(0, n.color + '40');
+        g.addColorStop(1, n.color + '00');
+        ectx.beginPath();
+        ectx.arc(cx, cy, r * 2.5, 0, Math.PI * 2);
+        ectx.fillStyle = g;
+        ectx.fill();
+
+        // 节点圆
+        ectx.beginPath();
+        ectx.arc(cx, cy, r, 0, Math.PI * 2);
+        ectx.fillStyle = n.color;
+        ectx.fill();
+        ectx.strokeStyle = 'rgba(255,255,255,0.2)';
+        ectx.lineWidth = 2;
+        ectx.stroke();
+
+        // 文字
+        const textColor = getContrastColor(n.color);
+        const isDark = textColor === '#ffffff';
+        ectx.font = `600 13px "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif`;
+        ectx.textAlign = 'center';
+        ectx.textBaseline = 'middle';
+        ectx.lineJoin = 'round';
+
+        if (isDark) {
+            ectx.shadowColor = 'rgba(0,0,0,0.85)';
+            ectx.shadowBlur = 7;
+            ectx.fillStyle = '#ffffff';
+            ectx.fillText(n.name, cx, cy);
+            ectx.shadowBlur = 0;
+            ectx.strokeStyle = 'rgba(0,0,0,0.7)';
+            ectx.lineWidth = 1.0;
+            ectx.strokeText(n.name, cx, cy);
+            ectx.strokeStyle = 'rgba(0,0,0,0.35)';
+            ectx.lineWidth = 0.5;
+            ectx.strokeText(n.name, cx, cy);
+            ectx.shadowColor = 'rgba(0,0,0,0.4)';
+            ectx.shadowBlur = 2;
+            ectx.fillStyle = '#ffffff';
+            ectx.fillText(n.name, cx, cy);
+        } else {
+            ectx.shadowColor = 'rgba(255,255,255,0.7)';
+            ectx.shadowBlur = 6;
+            ectx.fillStyle = textColor;
+            ectx.fillText(n.name, cx, cy);
+            ectx.shadowBlur = 0;
+            ectx.strokeStyle = 'rgba(255,255,255,0.5)';
+            ectx.lineWidth = 0.5;
+            ectx.strokeText(n.name, cx, cy);
+            ectx.fillStyle = textColor;
+            ectx.fillText(n.name, cx, cy);
+        }
+        ectx.shadowBlur = 0;
+        ectx.shadowColor = 'transparent';
+    }
+
+    ectx.restore();
+
+    // 8. 水印
+    ectx.font = '13px sans-serif';
+    ectx.textAlign = 'center';
+    ectx.fillStyle = 'rgba(154,154,191,0.25)';
+    ectx.fillText('天宝年间✦大梦一场', exportCanvas.width / 2, exportCanvas.height - 12);
+
+    // 9. 导出
+    const link = document.createElement('a');
+    link.download = `关系图_${new Date().toISOString().slice(0, 10)}.png`;
+    link.href = exportCanvas.toDataURL('image/png');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('完整图片已导出');
+});
+
 
         // ============================================================
         //  详情弹窗逻辑
